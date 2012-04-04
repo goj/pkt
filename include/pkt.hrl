@@ -100,91 +100,90 @@
 -define(ICMP_ADDRESSREPLY, 18).
 
 -record(linux_cooked, {
-	packet_type,
-	hrd = ?ARPHRD_ETHER,
-	ll_len = 0,
-	ll_bytes = <<>>,
-	pro = ?ETH_P_IP
-    }).
+          packet_type,
+          hrd = ?ARPHRD_ETHER,
+          ll_len = 0,
+          ll_bytes = <<>>,
+          pro = ?ETH_P_IP
+         }).
 
 -record(null, {
-        family = ?PF_INET
-    }).
+          family = ?PF_INET
+         }).
 
 -record(ether, {
-        dhost = <<0,0,0,0,0,0>>,
-        shost = <<0,0,0,0,0,0>>,
-        type = ?ETH_P_IP,
-        crc = 0
-    }).
+          dhost = <<0,0,0,0,0,0>>,
+          shost = <<0,0,0,0,0,0>>,
+          type = ?ETH_P_IP,
+          crc = 0
+         }).
 
 -record(arp, {
-        hrd = ?ARPHRD_ETHER,
-        pro = ?ETH_P_IP,
-        hln = 6,
-        pln = 4,
-        op = ?ARPOP_REPLY,
+          hrd = ?ARPHRD_ETHER,
+          pro = ?ETH_P_IP,
+          hln = 6,
+          pln = 4,
+          op = ?ARPOP_REPLY,
 
-        sha = <<0,0,0,0,0,0>>,
-        sip = {127,0,0,1},
+          sha = <<0,0,0,0,0,0>>,
+          sip = {127,0,0,1},
 
-        tha = <<0,0,0,0,0,0>>,
-        tip = {127,0,0,1}
-    }).
+          tha = <<0,0,0,0,0,0>>,
+          tip = {127,0,0,1}
+         }).
 
 -record(ipv4, {
-        v = 4, hl = 5, tos = 0, len = 20,
-        id = 0, df = 0, mf = 0,
-        off = 0, ttl = 64, p = ?IPPROTO_TCP, sum = 0,
-        saddr = {127,0,0,1}, daddr = {127,0,0,1},
-        opt = <<>>
-    }).
+          v = 4, hl = 5, tos = 0, len = 20,
+          id = 0, df = 0, mf = 0,
+          off = 0, ttl = 64, p = ?IPPROTO_TCP, sum = 0,
+          saddr = {127,0,0,1}, daddr = {127,0,0,1},
+          opt = <<>>
+         }).
 
 -record(ipv6, {
-        v = 6, class = 0, flow = 0,
-        len = 40, next = ?IPPROTO_TCP, hop = 0,
-        saddr, daddr
-    }).
+          v = 6, class = 0, flow = 0,
+          len = 40, next = ?IPPROTO_TCP, hop = 0,
+          saddr, daddr
+         }).
 
 -record(tcp, {
-        sport = 0, dport = 0,
-        seqno = 0,
-        ackno = 0,
-        off = 5, cwr = 0, ece = 0, urg = 0, ack = 0,
-        psh = 0, rst = 0, syn = 0, fin = 0, win = 0,
-        sum = 0, urp = 0,
-        opt = <<>>
-    }).
+          sport = 0, dport = 0,
+          seqno = 0,
+          ackno = 0,
+          off = 5, cwr = 0, ece = 0, urg = 0, ack = 0,
+          psh = 0, rst = 0, syn = 0, fin = 0, win = 0,
+          sum = 0, urp = 0,
+          opt = <<>>
+         }).
 
 -record(udp, {
-        sport = 0, dport = 0, ulen = 8, sum = 0
-    }).
+          sport = 0, dport = 0, ulen = 8, sum = 0
+         }).
 
 -record(icmp, {
-        type = ?ICMP_ECHO, code = 0, checksum = 0,
-        id = 0, sequence = 0,
-        gateway = {127,0,0,1},
-        un = <<0:32>>,
-        mtu = 0,
-        pointer = 0,
-        ts_orig = 0, ts_recv = 0, ts_tx = 0
-    }).
+          type = ?ICMP_ECHO, code = 0, checksum = 0,
+          id = 0, sequence = 0,
+          gateway = {127,0,0,1},
+          un = <<0:32>>,
+          mtu = 0,
+          pointer = 0,
+          ts_orig = 0, ts_recv = 0, ts_tx = 0
+         }).
 
 -record(sctp, {
-	sport = 0, dport = 0, vtag = 0, sum = 0,
-	chunks = []
-	}).
+          sport = 0, dport = 0, vtag = 0, sum = 0,
+          chunks = []
+         }).
 -record(sctp_chunk, {
-	type = 0, flags = 0, len = 0, payload = 0
-	}).
+          type = 0, flags = 0, len = 0, payload = 0
+         }).
 -record(sctp_chunk_data, {
-	tsn = 0, sid = 0, ssn = 0, ppi = 0, data
-	}).
-
+          tsn = 0, sid = 0, ssn = 0, ppi = 0, data
+         }).
 
 %% RFC 2784 - Generic Routing Encapsulation (GRE)
 -record(gre, {
-        c = 0, res0 = 0, ver = 0,
-        type = ?ETH_P_IP,
-        chksum = <<>>, res1 = <<>>
-    }).
+          c = 0, res0 = 0, ver = 0,
+          type = ?ETH_P_IP,
+          chksum = <<>>, res1 = <<>>
+         }).
