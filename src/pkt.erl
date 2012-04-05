@@ -186,33 +186,33 @@ ether(#ether{
 arp(<<Hrd:16, Pro:16,
       Hln:8, Pln:8, Op:16,
       Sha:6/bytes,
-      SA1:8, SA2:8, SA3:8, SA4:8,
+      SAddr:32/bits,
       Tha:6/bytes,
-      DA1:8, DA2:8, DA3:8, DA4:8,
+      DAddr:32/bits,
       Payload/binary>>
    ) ->
     {#arp{
         hrd = Hrd, pro = Pro,
         hln = Hln, pln = Pln, op = Op,
         sha = Sha,
-        sip = {SA1,SA2,SA3,SA4},
+        sip = SAddr,
         tha = Tha,
-        tip = {DA1,DA2,DA3,DA4}
+        tip = DAddr
        }, Payload};
 arp(#arp{
        hrd = Hrd, pro = Pro,
        hln = Hln, pln = Pln, op = Op,
        sha = Sha,
-       sip = {SA1,SA2,SA3,SA4},
+       sip = SAddr,
        tha = Tha,
-       tip = {DA1,DA2,DA3,DA4}
+       tip = DAddr
       }) ->
     <<Hrd:16, Pro:16,
       Hln:8, Pln:8, Op:16,
       Sha:6/bytes,
-      SA1:8, SA2:8, SA3:8, SA4:8,
+      SAddr:32/bits,
       Tha:6/bytes,
-      DA1:8, DA2:8, DA3:8, DA4:8>>.
+      DAddr:32/bits>>.
 
 
 %%
@@ -222,31 +222,27 @@ ipv4(
   <<4:4, HL:4, ToS:8, Len:16,
     Id:16, 0:1, DF:1, MF:1, %% RFC791 states it's a MUST
     Off:13, TTL:8, P:8, Sum:16,
-    SA1:8, SA2:8, SA3:8, SA4:8,
-    DA1:8, DA2:8, DA3:8, DA4:8,
-    Rest/binary>>
+    SAddr:32/bits, DAddr:32/bits, Rest/binary>>
  ) when HL >= 5 ->
     {Opt, Payload} = options(HL, Rest),
     {#ipv4{
         hl = HL, tos = ToS, len = Len,
         id = Id, df = DF, mf = MF,
         off = Off, ttl = TTL, p = P, sum = Sum,
-        saddr = {SA1,SA2,SA3,SA4},
-        daddr = {DA1,DA2,DA3,DA4},
+        saddr = SAddr,
+        daddr = DAddr,
         opt = Opt
        }, Payload};
 ipv4(#ipv4{
         hl = HL, tos = ToS, len = Len,
         id = Id, df = DF, mf = MF,
         off = Off, ttl = TTL, p = P, sum = Sum,
-        saddr = {SA1,SA2,SA3,SA4},
-        daddr = {DA1,DA2,DA3,DA4}
+        saddr = SAddr, daddr = DAddr
        }) ->
     <<4:4, HL:4, ToS:8, Len:16,
       Id:16, 0:1, DF:1, MF:1, %% RFC791 states it's a MUST
       Off:13, TTL:8, P:8, Sum:16,
-      SA1:8, SA2:8, SA3:8, SA4:8,
-      DA1:8, DA2:8, DA3:8, DA4:8>>.
+      SAddr:32/bits, DAddr:32/bits>>.
 
 
 %%
@@ -255,26 +251,22 @@ ipv4(#ipv4{
 ipv6(
   <<6:4, Class:8, Flow:20,
     Len:16, Next:8, Hop:8,
-    SA1:16, SA2:16, SA3:16, SA4:16, SA5:16, SA6:16, SA7:16, SA8:16,
-    DA1:16, DA2:16, DA3:16, DA4:16, DA5:16, DA6:16, DA7:16, DA8:16,
+    SAddr:128/bits, DAddr:128/bits,
     Payload/binary>>
  ) ->
     {#ipv6{
         class = Class, flow = Flow,
         len = Len, next = Next, hop = Hop,
-        saddr = {SA1, SA2, SA3, SA4, SA5, SA6, SA7, SA8},
-        daddr = {DA1, DA2, DA3, DA4, DA5, DA6, DA7, DA8}
+        saddr = SAddr, daddr = DAddr
        }, Payload};
 ipv6(#ipv6{
         class = Class, flow = Flow,
         len = Len, next = Next, hop = Hop,
-        saddr = {SA1, SA2, SA3, SA4, SA5, SA6, SA7, SA8},
-        daddr = {DA1, DA2, DA3, DA4, DA5, DA6, DA7, DA8}
+        saddr = SAddr, daddr = DAddr
        }) ->
     <<6:4, Class:8, Flow:20,
       Len:16, Next:8, Hop:8,
-      SA1:16, SA2:16, SA3:16, SA4:16, SA5:16, SA6:16, SA7:16, SA8:16,
-      DA1:16, DA2:16, DA3:16, DA4:16, DA5:16, DA6:16, DA7:16, DA8:16>>.
+      SAddr:128/bits, DAddr:128/bits>>.
 
 
 %%
@@ -412,14 +404,14 @@ icmp(#icmp{
     <<?ICMP_SOURCE_QUENCH:8, Code:8, Checksum:16, Unused:32/bits>>;
 
 %% Redirect Message
-icmp(<<?ICMP_REDIRECT:8, Code:8, Checksum:16, DA1, DA2, DA3, DA4, Payload/binary>>) ->
+icmp(<<?ICMP_REDIRECT:8, Code:8, Checksum:16, DAddr:32/bits, Payload/binary>>) ->
     {#icmp{
-        type = ?ICMP_REDIRECT, code = Code, checksum = Checksum, gateway = {DA1,DA2,DA3,DA4}
+        type = ?ICMP_REDIRECT, code = Code, checksum = Checksum, gateway = DAddr
        }, Payload};
 icmp(#icmp{
-        type = ?ICMP_REDIRECT, code = Code, checksum = Checksum, gateway = {DA1,DA2,DA3,DA4}
+        type = ?ICMP_REDIRECT, code = Code, checksum = Checksum, gateway = DAddr
        }) ->
-    <<?ICMP_REDIRECT:8, Code:8, Checksum:16, DA1, DA2, DA3, DA4>>;
+    <<?ICMP_REDIRECT:8, Code:8, Checksum:16, DAddr:32/bits>>;
 
 %% Echo or Echo Reply Message
 icmp(<<Type:8, Code:8, Checksum:16, Id:16, Sequence:16, Payload/binary>>)
@@ -476,8 +468,8 @@ icmp(#icmp{type = Type, code = Code, checksum = Checksum, un = Un}) ->
 
 %% TCP pseudoheader checksum
 checksum([#ipv4{
-             saddr = {SA1,SA2,SA3,SA4},
-             daddr = {DA1,DA2,DA3,DA4}
+             saddr = SAddr,
+             daddr = DAddr
             },
           #tcp{
                 off = Off
@@ -491,8 +483,7 @@ checksum([#ipv4{
               1 -> 8
           end,
     checksum(
-      <<SA1,SA2,SA3,SA4,
-        DA1,DA2,DA3,DA4,
+      <<SAddr, DAddr,
         0:8,
         ?IPPROTO_TCP:8,
         Len:16,
@@ -503,8 +494,8 @@ checksum([#ipv4{
 
 %% UDP pseudoheader checksum
 checksum([#ipv4{
-             saddr = {SA1,SA2,SA3,SA4},
-             daddr = {DA1,DA2,DA3,DA4}
+             saddr = SAddr,
+             daddr = DAddr
             },
           #udp{
                 ulen = Len
@@ -517,8 +508,7 @@ checksum([#ipv4{
               1 -> 8
           end,
     checksum(
-      <<SA1,SA2,SA3,SA4,
-        DA1,DA2,DA3,DA4,
+      <<SAddr, DAddr,
         0:8,
         ?IPPROTO_UDP:8,
         Len:16,

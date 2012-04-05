@@ -124,17 +124,17 @@
           op = ?ARPOP_REPLY,
 
           sha = <<0,0,0,0,0,0>>,
-          sip = {127,0,0,1},
+          sip = <<127,0,0,1>>,
 
           tha = <<0,0,0,0,0,0>>,
-          tip = {127,0,0,1}
+          tip = <<127,0,0,1>>
          }).
 
 -record(ipv4, {
           v = 4, hl = 5, tos = 0, len = 20,
           id = 0, df = 0, mf = 0,
           off = 0, ttl = 64, p = ?IPPROTO_TCP, sum = 0,
-          saddr = {127,0,0,1}, daddr = {127,0,0,1},
+          saddr = <<127,0,0,1>>, daddr = <<127,0,0,1>>,
           opt = <<>>
          }).
 
@@ -161,7 +161,7 @@
 -record(icmp, {
           type = ?ICMP_ECHO, code = 0, checksum = 0,
           id = 0, sequence = 0,
-          gateway = {127,0,0,1},
+          gateway = <<127,0,0,1>>,
           un = <<0:32>>,
           mtu = 0,
           pointer = 0,
