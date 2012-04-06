@@ -33,9 +33,13 @@
 -include("pkt.hrl").
 
 -export([
-         checksum/1,
+         encapsulate/1,
          decapsulate/1,
-         decapsulate_dlt/2,
+         decapsulate_dlt/2
+        ]).
+
+-export([
+         checksum/1,
          makesum/1,
          valid/1,
          ether/1,
@@ -76,6 +80,52 @@
 -export_type([
               packet/0
              ]).
+
+%%% Encapsulate ----------------------------------------------------------------
+
+-spec encapsulate(packet()) -> binary().
+encapsulate(Packet) ->
+    encapsulate(lists:reverse(Packet), <<>>).
+
+-spec encapsulate(packet(), binary()) -> binary().
+encapsulate([], Binary) ->
+    Binary;
+encapsulate([Payload | Packet], <<>>) when is_binary(Payload) ->
+    encapsulate(Packet, << Payload/binary >>);
+encapsulate([#tcp{} = TCP | Packet], Binary) ->
+    TCPBinary = tcp(TCP),
+    encapsulate(tcp, Packet, << TCPBinary/binary, Binary/binary >>);
+encapsulate([#udp{} = UDP | Packet], Binary) ->
+    UDPBinary = udp(UDP),
+    encapsulate(udp, Packet, << UDPBinary/binary, Binary/binary >>);
+encapsulate([#sctp{} = SCTP | Packet], Binary) ->
+    SCTPBinary = sctp(SCTP),
+    encapsulate(sctp, Packet, << SCTPBinary/binary, Binary/binary >>);
+encapsulate([#icmp{} = ICMP | Packet], Binary) ->
+    ICMPBinary = icmp(ICMP),
+    encapsulate(icmp, Packet, << ICMPBinary/binary, Binary/binary >>);
+encapsulate([#arp{} = ARP | Packet], Binary) ->
+    ARPBinary = arp(ARP),
+    encapsulate(arp, Packet, << ARPBinary/binary, Binary/binary >>);
+encapsulate([{unsupported, Unsupported} | Packet], Binary) ->
+    encapsulate(unsupported, Packet, << Unsupported/binary, Binary/binary >>);
+encapsulate([{truncated, Truncated} | Packet], Binary) ->
+    encapsulate(truncated, Packet, << Truncated/binary, Binary/binary >>).
+
+-spec encapsulate(ether_type() | proto(), packet(), binary()) -> binary().
+encapsulate(_, [], Binary) ->
+    encapsulate([], Binary);
+encapsulate(_Proto, [#ipv4{} = IPv4 | Packet], Binary) ->
+    IPv4Binary = ipv4(IPv4),
+    encapsulate(ipv4, Packet, << IPv4Binary/binary, Binary/binary >>);
+encapsulate(_Proto, [#ipv6{} = IPv6 | Packet], Binary) ->
+    IPv6Binary = ipv6(IPv6),
+    encapsulate(ipv6, Packet, << IPv6Binary/binary, Binary/binary >>);
+encapsulate(_EtherType, [#ether{} = Ether | Packet], Binary) ->
+    EtherBinary = ether(Ether),
+    encapsulate(ether, Packet, << EtherBinary/binary, Binary/binary >>).
+
+%%% Decapsulate ----------------------------------------------------------------
 
 decapsulate_dlt(Dlt, Data) ->
     decapsulate({link_type(Dlt), Data}, []).
