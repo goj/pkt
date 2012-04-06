@@ -1,3 +1,13 @@
+%%% Macros ---------------------------------------------------------------------
+
+-define(ETHERHDRLEN, 16).
+-define(IPV4HDRLEN, 20).
+-define(IPV6HDRLEN, 40).
+-define(TCPHDRLEN, 20).
+-define(UDPHDRLEN, 8).
+-define(ICMPHDRLEN, 8).
+-define(GREHDRLEN, 4).
+
 %% From http://en.wikipedia.org/wiki/EtherType
 -define(ETH_P_IP, 16#0800).
 -define(ETH_P_ARP, 16#0806).
@@ -98,6 +108,8 @@
 -define(ICMP_INFO_REPLY, 16).
 -define(ICMP_ADDRESS, 17).
 -define(ICMP_ADDRESSREPLY, 18).
+
+%%% Records --------------------------------------------------------------------
 
 -record(linux_cooked, {
           packet_type,
