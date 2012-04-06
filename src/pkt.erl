@@ -32,12 +32,6 @@
 
 -include("pkt.hrl").
 
--define(ETHERHDRLEN, 16).
--define(IPV4HDRLEN, 20).
--define(IPV6HDRLEN, 40).
--define(TCPHDRLEN, 20).
--define(UDPHDRLEN, 8).
--define(ICMPHDRLEN, 8).
 
 -export([
          checksum/1,
@@ -60,10 +54,32 @@
          dlt/1
         ]).
 
+%%% Types ----------------------------------------------------------------------
+
+-type ether_type() :: ipv4 | ipv6 | arp | unsupported.
+-type proto() :: tcp | udp | sctp | icmp | raw | unsupported.
+-type header() :: #linux_cooked{} |
+                  #null{} |
+                  #ether{} |
+                  #arp{} |
+                  #ipv4{} |
+                  #ipv6{} |
+                  #tcp{} |
+                  #udp{} |
+                  #icmp{} |
+                  #sctp{} |
+                  {unsupported, binary()} |
+                  {truncated, binary()}.
+%% Packet should be a list of headers with
+%% optional binary payload as a last element.
+-type packet() :: [header() | binary()].
+
+-export_type([
+              packet/0
+             ]).
 
 decapsulate_dlt(Dlt, Data) ->
     decapsulate({link_type(Dlt), Data}, []).
-
 
 decapsulate({DLT, Data}) when is_integer(DLT) ->
     decapsulate({link_type(DLT), Data}, []);
@@ -87,10 +103,10 @@ decapsulate({linux_cooked, Data}, Packet) when byte_size(Data) >= 16 ->
 decapsulate({ether, Data}, Packet) when byte_size(Data) >= ?ETHERHDRLEN ->
     {Hdr, Payload} = ether(Data),
     decapsulate({ether_type(Hdr#ether.type), Payload}, [Hdr|Packet]);
+
 decapsulate({arp, Data}, Packet) when byte_size(Data) >= 28 -> %% IPv4 ARP
     {Hdr, Payload} = arp(Data),
     decapsulate(stop, [Payload, Hdr|Packet]);
-
 decapsulate({ipv4, Data}, Packet) when byte_size(Data) >= ?IPV4HDRLEN ->
     {Hdr, Payload} = ipv4(Data),
     decapsulate({proto(Hdr#ipv4.p), Payload}, [Hdr|Packet]);
@@ -110,9 +126,9 @@ decapsulate({sctp, Data}, Packet) when byte_size(Data) >= 12 ->
 decapsulate({icmp, Data}, Packet) when byte_size(Data) >= ?ICMPHDRLEN ->
     {Hdr, Payload} = icmp(Data),
     decapsulate(stop, [Payload, Hdr|Packet]);
+
 decapsulate({_, Data}, Packet) ->
     decapsulate(stop, [{truncated, Data}|Packet]).
-
 
 ether_type(?ETH_P_IP) -> ipv4;
 ether_type(?ETH_P_IPV6) -> ipv6;
@@ -134,7 +150,6 @@ proto(?IPPROTO_UDP) -> udp;
 proto(?IPPROTO_SCTP) -> sctp;
 proto(?IPPROTO_RAW) -> raw;
 proto(_) -> unsupported.
-
 
 %%
 %% BSD loopback
