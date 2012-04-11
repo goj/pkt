@@ -273,7 +273,7 @@ ipv6(#ipv6{
 %% TCP
 %%
 tcp(
-  <<SPort:16, DPort:16,
+  <<SPort:16/bits, DPort:16/bits,
     SeqNo:32,
     AckNo:32,
     Off:4, 0:4, CWR:1, ECE:1, URG:1, ACK:1,
@@ -299,7 +299,7 @@ tcp(#tcp{
        psh = PSH, rst = RST, syn = SYN, fin = FIN, win = Win,
        sum = Sum, urp = Urp
       }) ->
-    <<SPort:16, DPort:16,
+    <<SPort:16/bits, DPort:16/bits,
       SeqNo:32,
       AckNo:32,
       Off:4, 0:4, CWR:1, ECE:1, URG:1, ACK:1,
@@ -314,7 +314,7 @@ options(Offset, Payload) ->
 %%
 %% SCTP
 %%
-sctp(<<SPort:16, DPort:16, VTag:32, Sum:32, Payload/binary>>) ->
+sctp(<<SPort:16/bits, DPort:16/bits, VTag:32, Sum:32, Payload/binary>>) ->
     {#sctp{sport = SPort, dport = DPort, vtag = VTag, sum = Sum,
            chunks=sctp_chunk_list_gen(Payload)}, []}.
 
@@ -351,10 +351,10 @@ sctp_chunk_payload(_, Data) ->
 %%
 %% UDP
 %%
-udp(<<SPort:16, DPort:16, ULen:16, Sum:16, Payload/binary>>) ->
+udp(<<SPort:16/bits, DPort:16/bits, ULen:16, Sum:16, Payload/binary>>) ->
     {#udp{sport = SPort, dport = DPort, ulen = ULen, sum = Sum}, Payload};
 udp(#udp{sport = SPort, dport = DPort, ulen = ULen, sum = Sum}) ->
-    <<SPort:16, DPort:16, ULen:16, Sum:16>>.
+    <<SPort:16/bits, DPort:16/bits, ULen:16, Sum:16>>.
 
 
 %%

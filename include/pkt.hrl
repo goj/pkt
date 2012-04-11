@@ -145,7 +145,7 @@
          }).
 
 -record(tcp, {
-          sport = 0, dport = 0,
+          sport = <<0:16>>, dport = <<0:16>>,
           seqno = 0,
           ackno = 0,
           off = 5, cwr = 0, ece = 0, urg = 0, ack = 0,
@@ -155,7 +155,7 @@
          }).
 
 -record(udp, {
-          sport = 0, dport = 0, ulen = 8, sum = 0
+          sport = <<0:16>>, dport = <<0:16>>, ulen = 8, sum = 0
          }).
 
 -record(icmp, {
@@ -169,7 +169,7 @@
          }).
 
 -record(sctp, {
-          sport = 0, dport = 0, vtag = 0, sum = 0,
+          sport = <<0:16>>, dport = <<0:16>>, vtag = 0, sum = 0,
           chunks = []
          }).
 -record(sctp_chunk, {
