@@ -92,11 +92,12 @@ encapsulate([], Binary) ->
     Binary;
 encapsulate([Payload | Packet], <<>>) when is_binary(Payload) ->
     encapsulate(Packet, << Payload/binary >>);
-encapsulate([#tcp{} = TCP | Packet], Binary) ->
-    TCPBinary = tcp(TCP),
+encapsulate([#tcp{} = TCP | [IP | _] = Packet], Binary) ->
+    TCPBinary = tcp(TCP#tcp{sum = makesum([IP, TCP, Binary])}),
     encapsulate(tcp, Packet, << TCPBinary/binary, Binary/binary >>);
-encapsulate([#udp{} = UDP | Packet], Binary) ->
-    UDPBinary = udp(UDP),
+encapsulate([#udp{} = UDP0 | [IP | _] = Packet], Binary) ->
+    UDP = UDP0#udp{ulen = 8 + byte_size(Binary)},
+    UDPBinary = udp(UDP#udp{sum = makesum([IP, UDP, Binary])}),
     encapsulate(udp, Packet, << UDPBinary/binary, Binary/binary >>);
 encapsulate([#sctp{} = SCTP | Packet], Binary) ->
     SCTPBinary = sctp(SCTP),
@@ -115,14 +116,14 @@ encapsulate([{truncated, Truncated} | Packet], Binary) ->
 -spec encapsulate(ether_type() | proto(), packet(), binary()) -> binary().
 encapsulate(_, [], Binary) ->
     encapsulate([], Binary);
-encapsulate(_Proto, [#ipv4{} = IPv4 | Packet], Binary) ->
-    IPv4Binary = ipv4(IPv4),
+encapsulate(Proto, [#ipv4{} = IPv4 | Packet], Binary) ->
+    IPv4Binary = ipv4(fill_ipv4_hdr(IPv4, Proto, byte_size(Binary))),
     encapsulate(ipv4, Packet, << IPv4Binary/binary, Binary/binary >>);
-encapsulate(_Proto, [#ipv6{} = IPv6 | Packet], Binary) ->
-    IPv6Binary = ipv6(IPv6),
+encapsulate(Proto, [#ipv6{} = IPv6 | Packet], Binary) ->
+    IPv6Binary = ipv6(fill_ipv6_hdr(IPv6, Proto, byte_size(Binary))),
     encapsulate(ipv6, Packet, << IPv6Binary/binary, Binary/binary >>);
-encapsulate(_EtherType, [#ether{} = Ether | Packet], Binary) ->
-    EtherBinary = ether(Ether),
+encapsulate(EtherType, [#ether{} = Ether | Packet], Binary) ->
+    EtherBinary = ether(fill_ether_type(Ether, EtherType)),
     encapsulate(ether, Packet, << EtherBinary/binary, Binary/binary >>).
 
 %%% Decapsulate ----------------------------------------------------------------
@@ -188,6 +189,11 @@ ether_type(?ETH_P_IPV6) -> ipv6;
 ether_type(?ETH_P_ARP) -> arp;
 ether_type(_) -> unsupported.
 
+ether_type_code(ipv4, _) -> ?ETH_P_IP;
+ether_type_code(ipv6, _) -> ?ETH_P_IPV6;
+ether_type_code(arp, _) -> ?ETH_P_ARP;
+ether_type_code(unsupported, Old) -> Old.
+
 link_type(?DLT_NULL) -> null;
 link_type(?DLT_EN10MB) -> ether;
 link_type(?DLT_LINUX_SLL) -> linux_cooked;
@@ -206,6 +212,27 @@ proto(?IPPROTO_SCTP) -> sctp;
 proto(?IPPROTO_GRE) -> gre;
 proto(?IPPROTO_RAW) -> raw;
 proto(_) -> unsupported.
+
+proto_code(icmp, _) -> ?IPPROTO_ICMP;
+proto_code(tcp, _) -> ?IPPROTO_TCP;
+proto_code(udp, _) -> ?IPPROTO_UDP;
+proto_code(sctp, _) -> ?IPPROTO_SCTP;
+proto_code(raw, _) -> ?IPPROTO_RAW;
+proto_code(unsupported, Old) -> Old.
+
+fill_ether_type(#ether{type = OldType} = Ether, EtherType) ->
+    Ether#ether{type = ether_type_code(EtherType, OldType)}.
+
+fill_ipv4_hdr(#ipv4{opt = Opt} = IPv4, Proto, DataLen) ->
+    HL = 5 + (bit_size(Opt) + 31) div 32,
+    Tmp = IPv4#ipv4{hl = HL,
+                    len = 4 * HL + DataLen,
+                    p = proto_code(Proto, IPv4#ipv4.p)},
+    Tmp#ipv4{sum = pkt:makesum(Tmp)}.
+
+fill_ipv6_hdr(#ipv6{} = IPv6, Proto, Len) ->
+    IPv6#ipv6{len = Len,
+              next = proto_code(Proto, IPv6#ipv6.next)}.
 
 %%
 %% BSD loopback
@@ -555,59 +582,73 @@ icmp(#icmp{type = Type, code = Code, checksum = Checksum, un = Un}) ->
 %% Utility functions
 %%
 
-%% TCP pseudoheader checksum
-checksum([#ipv4{
-             saddr = SAddr,
-             daddr = DAddr
-            },
-          #tcp{
-                off = Off
-              } = TCPhdr,
-          Payload
-         ]) ->
-    Len = Off * 4,
+checksum(#ipv4{saddr = SAddr,
+               daddr = DAddr},
+         #tcp{} = TCPhdr,
+         Payload) ->
     TCP = tcp(TCPhdr#tcp{sum = 0}),
-    Pad = case Len rem 2 of
-              0 -> 0;
-              1 -> 8
-          end,
-    checksum(
-      <<SAddr, DAddr,
-        0:8,
-        ?IPPROTO_TCP:8,
-        Len:16,
-        TCP/binary,
-        Payload/bits,
-        0:Pad>>
-     );
+    Len = size(TCP) + size(Payload),
+    Pad = 8 * (Len rem 2),
+    checksum(<<SAddr:32/bits,
+               DAddr:32/bits,
+               0:8, ?IPPROTO_TCP:8,
+               Len:16,
+               TCP/binary,
+               Payload/bits,
+               0:Pad>>);
 
-%% UDP pseudoheader checksum
-checksum([#ipv4{
-             saddr = SAddr,
-             daddr = DAddr
-            },
-          #udp{
-                ulen = Len
-              } = Hdr,
-          Payload
-         ]) ->
+checksum(#ipv6{saddr = SAddr,
+               daddr = DAddr},
+         #tcp{} = TCPhdr,
+         Payload) ->
+    TCP = tcp(TCPhdr#tcp{sum = 0}),
+    Len = size(TCP) + size(Payload),
+    Pad = 8 * (Len rem 2),
+    checksum(<<SAddr:128/bits,
+               DAddr:128/bits,
+               Len:32,
+               0:24, ?IPPROTO_TCP:8,
+               TCP/binary,
+               Payload/bits,
+               0:Pad>>);
+
+checksum(#ipv4{saddr = SAddr,
+               daddr = DAddr},
+         #udp{ulen = Len} = Hdr,
+         Payload) ->
     UDP = udp(Hdr#udp{sum = 0}),
-    Pad = case Len rem 2 of
-              0 -> 0;
-              1 -> 8
-          end,
-    checksum(
-      <<SAddr, DAddr,
-        0:8,
-        ?IPPROTO_UDP:8,
-        Len:16,
-        UDP/binary,
-        Payload/bits,
-        0:Pad>>
-     );
+    Pad = bit_size(Payload) rem 16,
+    checksum(<<SAddr:32/bits,
+               DAddr:32/bits,
+               0:8,
+               ?IPPROTO_UDP:8,
+               Len:16,
+               UDP/binary,
+               Payload/bits,
+               0:Pad>>);
 
+checksum(#ipv6{saddr = SAddr,
+               daddr = DAddr},
+         #udp{ulen = Len} = Hdr,
+         Payload) ->
+    UDP = udp(Hdr#udp{sum = 0}),
+    Pad = bit_size(Payload) rem 16,
+    checksum(<<SAddr:128/bits,
+               DAddr:128/bits,
+               Len:32,
+               0:24,
+               ?IPPROTO_UDP:8,
+               UDP/binary,
+               Payload/bits,
+               0:Pad>>);
+
+checksum(_, _, _) ->
+    0.
+
+checksum([IP, TransportLayer, Payload]) ->
+    checksum(IP, TransportLayer, Payload);
 checksum(#ipv4{} = H) ->
-    checksum(ipv4(H));
+    checksum(ipv4(H#ipv4{sum=0}));
 checksum(Hdr) ->
     lists:foldl(fun compl/2, 0, [ W || <<W:16>> <= Hdr ]).
 
