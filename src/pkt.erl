@@ -116,10 +116,10 @@ encapsulate([{truncated, Truncated} | Packet], Binary) ->
 encapsulate(_, [], Binary) ->
     encapsulate([], Binary);
 encapsulate(_Proto, [#ipv4{} = IPv4 | Packet], Binary) ->
-    IPv4Binary = ipv4(IPv4),
+    IPv4Binary = ipv4(fill_ipv4_hdr(IPv4, byte_size(Binary))),
     encapsulate(ipv4, Packet, << IPv4Binary/binary, Binary/binary >>);
 encapsulate(_Proto, [#ipv6{} = IPv6 | Packet], Binary) ->
-    IPv6Binary = ipv6(IPv6),
+    IPv6Binary = ipv6(fill_ipv6_hdr(IPv6, byte_size(Binary))),
     encapsulate(ipv6, Packet, << IPv6Binary/binary, Binary/binary >>);
 encapsulate(_EtherType, [#ether{} = Ether | Packet], Binary) ->
     EtherBinary = ether(Ether),
@@ -199,6 +199,14 @@ proto(?IPPROTO_UDP) -> udp;
 proto(?IPPROTO_SCTP) -> sctp;
 proto(?IPPROTO_RAW) -> raw;
 proto(_) -> unsupported.
+
+fill_ipv4_hdr(#ipv4{opt = Opt} = IPv4, DataLen) ->
+    HL = 5 + (bit_size(Opt) + 31) div 32,
+    Tmp = IPv4#ipv4{hl = HL, len = 4 * HL + DataLen},
+    Tmp#ipv4{sum = pkt:makesum(Tmp)}.
+
+fill_ipv6_hdr(#ipv6{} = IPv6, Len) ->
+    IPv6#ipv6{len = Len}.
 
 %%
 %% BSD loopback
@@ -548,7 +556,7 @@ checksum([#ipv4{
               1 -> 8
           end,
     checksum(
-      <<SAddr, DAddr,
+        <<SAddr:32/bits, DAddr:32/bits,
         0:8,
         ?IPPROTO_TCP:8,
         Len:16,
@@ -573,7 +581,7 @@ checksum([#ipv4{
               1 -> 8
           end,
     checksum(
-      <<SAddr, DAddr,
+        <<SAddr:32/bits, DAddr:32/bits,
         0:8,
         ?IPPROTO_UDP:8,
         Len:16,
