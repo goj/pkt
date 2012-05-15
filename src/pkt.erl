@@ -123,6 +123,12 @@ encapsulate(Proto, [#ipv4{} = IPv4 | Packet], Binary) ->
 encapsulate(Proto, [#ipv6{} = IPv6 | Packet], Binary) ->
     IPv6Binary = ipv6(fill_ipv6_hdr(IPv6, Proto, byte_size(Binary))),
     encapsulate(ipv6, Packet, << IPv6Binary/binary, Binary/binary >>);
+encapsulate(EtherType, [#ieee802_1q_tag{} = VlanTag | Packet], Binary) ->
+    TagBinary = ieee802_1q_tag(fill_ether_type(VlanTag, EtherType)),
+    encapsulate(ieee802_1q_tag, Packet, << TagBinary/binary, Binary/binary >>);
+encapsulate(EtherType, [#mpls_tag{mode = Mode} = MPLSTag | Packet], Binary) ->
+    TagBinary = mpls_tag(fill_ether_type(MPLSTag, EtherType)),
+    encapsulate({mpls_tag, Mode}, Packet, << TagBinary/binary, Binary/binary >>);
 encapsulate(EtherType, [#ether{} = Ether | Packet], Binary) ->
     EtherBinary = ether(fill_ether_type(Ether, EtherType)),
     encapsulate(ether, Packet, << EtherBinary/binary, Binary/binary >>).
@@ -154,6 +160,16 @@ decapsulate({linux_cooked, Data}, Packet) when byte_size(Data) >= 16 ->
 decapsulate({ether, Data}, Packet) when byte_size(Data) >= ?ETHERHDRLEN ->
     {Hdr, Payload} = ether(Data),
     decapsulate({ether_type(Hdr#ether.type), Payload}, [Hdr|Packet]);
+
+decapsulate({ieee802_1q_tag, Data}, Packet) ->
+    {Tag, Payload} = ieee802_1q_tag(Data),
+    EtherType = ether_type(Tag#ieee802_1q_tag.ether_type),
+    decapsulate({EtherType, Payload}, [Tag|Packet]);
+decapsulate({{mpls_tag, Mode}, Data}, Packet) ->
+    {RawTag, Payload} = mpls_tag(Data),
+    Tag = RawTag#mpls_tag{mode = Mode},
+    EtherType = ether_type(Tag#mpls_tag.ether_type),
+    decapsulate({EtherType, Payload}, [Tag|Packet]);
 
 decapsulate({arp, Data}, Packet) when byte_size(Data) >= 28 -> %% IPv4 ARP
     {Hdr, Payload} = arp(Data),
@@ -188,11 +204,17 @@ decapsulate({_, Data}, Packet) ->
 ether_type(?ETH_P_IP) -> ipv4;
 ether_type(?ETH_P_IPV6) -> ipv6;
 ether_type(?ETH_P_ARP) -> arp;
+ether_type(?ETH_P_802_1Q) -> ieee802_1q_tag;
+ether_type(?ETH_P_MPLS_UNI) -> {mpls_tag, unicast};
+ether_type(?ETH_P_MPLS_MULTI) -> {mpls_tag, multicast};
 ether_type(_) -> unsupported.
 
 ether_type_code(ipv4, _) -> ?ETH_P_IP;
 ether_type_code(ipv6, _) -> ?ETH_P_IPV6;
 ether_type_code(arp, _) -> ?ETH_P_ARP;
+ether_type_code(ieee802_1q_tag, _) -> ?ETH_P_802_1Q;
+ether_type_code({mpls_tag, unicast}, _) -> ?ETH_P_MPLS_UNI;
+ether_type_code({mpls_tag, multicast}, _) -> ?ETH_P_MPLS_MULTI;
 ether_type_code(unsupported, Old) -> Old.
 
 link_type(?DLT_NULL) -> null;
@@ -221,6 +243,10 @@ proto_code(sctp, _) -> ?IPPROTO_SCTP;
 proto_code(raw, _) -> ?IPPROTO_RAW;
 proto_code(unsupported, Old) -> Old.
 
+fill_ether_type(#ieee802_1q_tag{ether_type = OldType} = Tag, EtherType) ->
+    Tag#ieee802_1q_tag{ether_type = ether_type_code(EtherType, OldType)};
+fill_ether_type(#mpls_tag{ether_type = OldType} = Tag, EtherType) ->
+    Tag#mpls_tag{ether_type = ether_type_code(EtherType, OldType)};
 fill_ether_type(#ether{type = OldType} = Ether, EtherType) ->
     Ether#ether{type = ether_type_code(EtherType, OldType)}.
 
@@ -278,6 +304,59 @@ ether(#ether{
          type = Type
         }) ->
     <<Dhost:6/bytes, Shost:6/bytes, Type:16>>.
+
+%%
+%% MPLS
+%%
+mpls_tag(#mpls_tag{stack = Stack,
+                   ether_type = EtherType}) ->
+    StackBin = << <<(mpls_stack_entry(SE))/binary>> || SE <- Stack >>,
+    <<(set_bottom_bit(StackBin))/binary, EtherType:16>>;
+mpls_tag(Binary) when is_binary(Binary) ->
+    decode_mpls(Binary, []).
+
+mpls_stack_entry(#mpls_stack_entry{label = Label,
+                                   qos = QOS,
+                                   pri = PRI,
+                                   ecn = ECN,
+                                   ttl = TTL}) ->
+    <<Label/bits, QOS:1, PRI:1, ECN:1, 0:1, TTL:8>>.
+
+set_bottom_bit(MPLSStack) ->
+    StartLen = bit_size(MPLSStack) - 9,
+    <<Start:StartLen/bits, _:1, TTL:8>> = MPLSStack,
+    <<Start:StartLen/bits, 1:1, TTL:8>>.
+
+decode_mpls(<<Label:20, QOS:1, PRI:1, ECN:1, Bottom:1, TTL:8, Rest/binary>>, Acc) ->
+    Entry = #mpls_stack_entry{label = Label,
+                              qos = QOS,
+                              pri = PRI,
+                              ecn = ECN,
+                              ttl = TTL},
+    case Bottom of
+        0 ->
+            decode_mpls(Rest, [Entry|Acc]);
+        1 ->
+            <<EtherType:16, Payload/binary>> = Rest,
+            MPLSTag = #mpls_tag{stack = lists:reverse(Acc),
+                                ether_type = EtherType},
+            {MPLSTag, Payload}
+    end.
+
+%%
+%% 802.1Q
+%%
+ieee802_1q_tag(#ieee802_1q_tag{pcp = PCP,
+                               cfi = CFI,
+                               vid = VID,
+                               ether_type = EtherType}) ->
+    <<PCP:3, CFI:1, VID/bits, EtherType:16>>;
+ieee802_1q_tag(<<PCP:3, CFI:1, VID:12/bits, EtherType:16, Payload/binary>>) ->
+    {#ieee802_1q_tag{pcp = PCP,
+                     cfi = CFI,
+                     vid = VID,
+                     ether_type = EtherType},
+     Payload}.
 
 %%
 %% ARP

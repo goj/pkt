@@ -12,6 +12,9 @@
 -define(ETH_P_IP, 16#0800).
 -define(ETH_P_ARP, 16#0806).
 -define(ETH_P_IPV6, 16#86DD).
+-define(ETH_P_802_1Q, 16#8100).
+-define(ETH_P_MPLS_UNI, 16#8847).
+-define(ETH_P_MPLS_MULTI, 16#8848).
 -define(ETH_P_ALL, 16#0300).
 
 -define(ARPHRD_ETHER, 1).
@@ -128,6 +131,28 @@
           shost = <<0,0,0,0,0,0>>,
           type = ?ETH_P_IP,
           crc = 0
+         }).
+
+-record(ieee802_1q_tag, {
+          pcp = 0,
+          cfi = 0,
+          vid = <<0:12>>,
+          ether_type = ?ETH_P_IP
+         }).
+
+-record(mpls_stack_entry, {
+          label = <<0:20>>,
+          qos = 0,
+          pri = 0,
+          ecn = 0,
+          bottom = 0,
+          ttl = 255
+         }).
+
+-record(mpls_tag, {
+          stack = [#mpls_stack_entry{}] :: [#mpls_stack_entry{}],
+          mode = unicast :: unicast | multicast,
+          ether_type = ?ETH_P_IP
          }).
 
 -record(arp, {
