@@ -49,6 +49,7 @@
          null/1,
          linux_cooked/1,
          icmp/1,
+         icmpv6/1,
          ipv4/1,
          ipv6/1,
          proto/1,
@@ -60,7 +61,7 @@
 %%% Types ----------------------------------------------------------------------
 
 -type ether_type() :: ipv4 | ipv6 | arp | unsupported.
--type proto() :: tcp | udp | sctp | icmp | raw | unsupported.
+-type proto() :: tcp | udp | sctp | icmp | icmpv6 | raw | unsupported.
 -type header() :: #linux_cooked{} |
                   #null{} |
                   #ether{} |
@@ -72,6 +73,7 @@
                   #tcp{} |
                   #udp{} |
                   #icmp{} |
+                  #icmpv6{} |
                   #sctp{} |
                   {unsupported, binary()} |
                   {truncated, binary()}.
@@ -108,6 +110,9 @@ encapsulate([#icmp{} = ICMP | Packet], Binary) ->
     Checksum = makesum(<<(icmp(ICMP))/binary, Binary/binary>>),
     ICMPBinary = icmp(ICMP#icmp{checksum = Checksum}),
     encapsulate(icmp, Packet, << ICMPBinary/binary, Binary/binary >>);
+encapsulate([#icmpv6{} = ICMP | [IP|_] = Packet], Binary) ->
+    ICMPBinary = icmpv6(ICMP#icmpv6{checksum = makesum([IP, ICMP, Binary])}),
+    encapsulate(icmpv6, Packet, << ICMPBinary/binary, Binary/binary >>);
 encapsulate([#arp{} = ARP | Packet], Binary) ->
     ARPBinary = arp(ARP),
     encapsulate(arp, Packet, << ARPBinary/binary, Binary/binary >>);
@@ -199,6 +204,9 @@ decapsulate({sctp, Data}, Packet) when byte_size(Data) >= 12 ->
 decapsulate({icmp, Data}, Packet) when byte_size(Data) >= ?ICMPHDRLEN ->
     {Hdr, Payload} = icmp(Data),
     decapsulate(stop, [Payload, Hdr|Packet]);
+decapsulate({icmpv6, Data}, Packet) when byte_size(Data) >= ?ICMPV6HDRLEN ->
+    {Hdr, Payload} = icmpv6(Data),
+    decapsulate(stop, [Payload, Hdr|Packet]);
 
 decapsulate({_, Data}, Packet) ->
     decapsulate(stop, [{truncated, Data}|Packet]).
@@ -239,6 +247,7 @@ proto(?IPPROTO_RAW) -> raw;
 proto(_) -> unsupported.
 
 proto_code(icmp, _) -> ?IPPROTO_ICMP;
+proto_code(icmpv6, _) -> ?IPPROTO_ICMPV6;
 proto_code(tcp, _) -> ?IPPROTO_TCP;
 proto_code(udp, _) -> ?IPPROTO_UDP;
 proto_code(sctp, _) -> ?IPPROTO_SCTP;
@@ -664,6 +673,14 @@ icmp(#icmp{type = Type, code = Code, checksum = Checksum, un = Un}) ->
 %% Utility functions
 %%
 
+icmpv6(<<Type:8, Code:8, Checksum:16, Body/bits>>) ->
+    {#icmpv6{type = Type, code = Code, checksum = Checksum}, Body};
+icmpv6(#icmpv6{type = Type, code = Code, checksum = Checksum}) ->
+    <<Type:8, Code:8, Checksum:16>>.
+%%
+%% Utility functions
+%%
+
 checksum(#ipv4{saddr = SAddr,
                daddr = DAddr},
          #tcp{} = TCPhdr,
@@ -723,6 +740,20 @@ checksum(#ipv6{saddr = SAddr,
                UDP/binary,
                Payload/bits,
                0:Pad>>);
+
+checksum(#ipv6{saddr = SAddr,
+               daddr = DAddr},
+         #icmpv6{} = Hdr,
+         Payload) ->
+    ICMP = icmpv6(Hdr#icmpv6{checksum = 0}),
+    Len = bit_size(ICMP) + bit_size(Payload),
+    checksum(<<SAddr:128/bits,
+               DAddr:128/bits,
+               Len:32,
+               0:24,
+               ?IPPROTO_ICMPV6:8,
+               ICMP/binary,
+               Payload/bits>>);
 
 checksum(_, _, _) ->
     0.

@@ -6,6 +6,7 @@
 -define(TCPHDRLEN, 20).
 -define(UDPHDRLEN, 8).
 -define(ICMPHDRLEN, 8).
+-define(ICMPV6HDRLEN, 4).
 -define(GREHDRLEN, 4).
 
 %% From http://en.wikipedia.org/wiki/EtherType
@@ -112,6 +113,13 @@
 -define(ICMP_ADDRESS, 17).
 -define(ICMP_ADDRESSREPLY, 18).
 
+-define(ICMPV6_DEST_UNREACH, 1).
+-define(ICMPV6_PACKET_TOO_BIG, 2).
+-define(ICMPV6_TIME_EXCEEDED, 3).
+-define(ICMPV6_PARAMETER_PROBLEM, 4).
+-define(ICMPV6_ECHO_REQUEST, 128).
+-define(ICMPV6_ECHO_REPLY, 129).
+
 %%% Records --------------------------------------------------------------------
 
 -record(linux_cooked, {
@@ -205,6 +213,10 @@
           mtu = 0,
           pointer = 0,
           ts_orig = 0, ts_recv = 0, ts_tx = 0
+         }).
+
+-record(icmpv6, {
+          type = ?ICMPV6_ECHO_REQUEST, code = 0, checksum = 0
          }).
 
 -record(sctp, {
