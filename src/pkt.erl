@@ -65,6 +65,8 @@
                   #null{} |
                   #ether{} |
                   #arp{} |
+                  #ieee802_1q_tag{} |
+                  #mpls_tag{} |
                   #ipv4{} |
                   #ipv6{} |
                   #tcp{} |
