@@ -75,6 +75,8 @@
                   #icmp{} |
                   #icmpv6{} |
                   #sctp{} |
+                  #ndp_ns{} |
+                  #ndp_na{} |
                   {unsupported, binary()} |
                   {truncated, binary()}.
 %% Packet should be a list of headers with
@@ -110,6 +112,10 @@ encapsulate([#icmp{} = ICMP | Packet], Binary) ->
     Checksum = makesum(<<(icmp(ICMP))/binary, Binary/binary>>),
     ICMPBinary = icmp(ICMP#icmp{checksum = Checksum}),
     encapsulate(icmp, Packet, << ICMPBinary/binary, Binary/binary >>);
+encapsulate([#ndp_ns{} = NDP | Packet], Binary) ->
+    encapsulate(ndp_ns, Packet, << (ndp_ns(NDP))/binary, Binary/binary >>);
+encapsulate([#ndp_na{} = NDP | Packet], Binary) ->
+    encapsulate(ndp_na, Packet, << (ndp_na(NDP))/binary, Binary/binary >>);
 encapsulate([#icmpv6{} = ICMP | [IP|_] = Packet], Binary) ->
     ICMPBinary = icmpv6(ICMP#icmpv6{checksum = makesum([IP, ICMP, Binary])}),
     encapsulate(icmpv6, Packet, << ICMPBinary/binary, Binary/binary >>);
@@ -124,6 +130,8 @@ encapsulate([{truncated, Truncated} | Packet], Binary) ->
 -spec encapsulate(ether_type() | proto(), packet(), binary()) -> binary().
 encapsulate(_, [], Binary) ->
     encapsulate([], Binary);
+encapsulate(ICMPPayloadType, [#icmpv6{} = ICMP | Packet], Binary) ->
+    encapsulate([fix_icmpv6_type(ICMP, ICMPPayloadType) | Packet], Binary);
 encapsulate(Proto, [#ipv4{} = IPv4 | Packet], Binary) ->
     IPv4Binary = ipv4(fill_ipv4_hdr(IPv4, Proto, byte_size(Binary))),
     encapsulate(ipv4, Packet, << IPv4Binary/binary, Binary/binary >>);
@@ -206,7 +214,12 @@ decapsulate({icmp, Data}, Packet) when byte_size(Data) >= ?ICMPHDRLEN ->
     decapsulate(stop, [Payload, Hdr|Packet]);
 decapsulate({icmpv6, Data}, Packet) when byte_size(Data) >= ?ICMPV6HDRLEN ->
     {Hdr, Payload} = icmpv6(Data),
-    decapsulate(stop, [Payload, Hdr|Packet]);
+    decapsulate(icmpv6_payload_type(Hdr#icmpv6.type), [Payload, Hdr|Packet]);
+
+decapsulate({ndp_ns, Data}, Packet) ->
+    decapsulate(stop, [ndp_ns(Data)|Packet]);
+decapsulate({ndp_na, Data}, Packet) ->
+    decapsulate(stop, [ndp_na(Data)|Packet]);
 
 decapsulate({_, Data}, Packet) ->
     decapsulate(stop, [{truncated, Data}|Packet]).
@@ -254,6 +267,10 @@ proto_code(sctp, _) -> ?IPPROTO_SCTP;
 proto_code(raw, _) -> ?IPPROTO_RAW;
 proto_code(unsupported, Old) -> Old.
 
+icmpv6_payload_type(?ICMPV6_NDP_NS) -> ndp_ns;
+icmpv6_payload_type(?ICMPV6_NDP_NA) -> ndp_na;
+icmpv6_payload_type(_) -> unsupported.
+
 fill_ether_type(#ieee802_1q_tag{ether_type = OldType} = Tag, EtherType) ->
     Tag#ieee802_1q_tag{ether_type = ether_type_code(EtherType, OldType)};
 fill_ether_type(#mpls_tag{ether_type = OldType} = Tag, EtherType) ->
@@ -271,6 +288,13 @@ fill_ipv4_hdr(#ipv4{opt = Opt} = IPv4, Proto, DataLen) ->
 fill_ipv6_hdr(#ipv6{} = IPv6, Proto, Len) ->
     IPv6#ipv6{len = Len,
               next = proto_code(Proto, IPv6#ipv6.next)}.
+
+fix_icmpv6_type(#icmpv6{} = ICMP, ndp_ns) ->
+    ICMP#icmpv6{type = ?ICMPV6_NDP_NS};
+fix_icmpv6_type(#icmpv6{} = ICMP, ndp_na) ->
+    ICMP#icmpv6{type = ?ICMPV6_NDP_NA};
+fix_icmpv6_type(#icmpv6{} = ICMP, _) ->
+    ICMP.
 
 %%
 %% BSD loopback
@@ -677,6 +701,44 @@ icmpv6(<<Type:8, Code:8, Checksum:16, Body/bits>>) ->
     {#icmpv6{type = Type, code = Code, checksum = Checksum}, Body};
 icmpv6(#icmpv6{type = Type, code = Code, checksum = Checksum}) ->
     <<Type:8, Code:8, Checksum:16>>.
+
+%%
+%% NDP
+%%
+
+ndp_ns(<<_:32, TGTAddr:128, Rest/binary>>) ->
+    NDP = #ndp_ns{tgt_addr = TGTAddr},
+    case lists:keyfind(?NDP_OPT_SLL, 1, parse_ndp_options(Rest)) of
+        {?NDP_OPT_SLL, SLL} ->
+            NDP#ndp_ns{sll = SLL};
+        false ->
+            NDP
+    end;
+ndp_ns(#ndp_ns{tgt_addr = TGTAddr, sll = SLL}) ->
+    <<0:32, TGTAddr/binary, (ndp_addr(?NDP_OPT_SLL, SLL))/binary>>.
+
+ndp_na(<<R:1, S:1, O:1, _:29, SRCAddr:128, Rest/binary>>) ->
+    NDP = #ndp_na{r = R, s = S, o = O, src_addr = SRCAddr},
+    case lists:keyfind(?NDP_OPT_TLL, 1, parse_ndp_options(Rest)) of
+        {?NDP_OPT_TLL, TLL} ->
+            NDP#ndp_na{tll = TLL};
+        false ->
+            NDP
+    end;
+ndp_na(#ndp_na{src_addr = SRCAddr, r = R, s = S, o = O, tll = TLL}) ->
+    <<R:1, S:1, O:1, 0:29, SRCAddr/binary, (ndp_addr(?NDP_OPT_TLL, TLL))/binary>>.
+
+parse_ndp_options(<<>>) ->
+    [];
+parse_ndp_options(<<Type:8, Len:8, Rest/binary>>) ->
+    <<Data:Len/binary, Next/binary>> = Rest,
+    [{Type, Data} | parse_ndp_options(Next)].
+
+ndp_addr(_, undefined) ->
+    <<>>;
+ndp_addr(Type, Value) ->
+    <<Type:8, (size(Value)):8, Value/binary>>.
+
 %%
 %% Utility functions
 %%

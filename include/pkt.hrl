@@ -120,6 +120,15 @@
 -define(ICMPV6_ECHO_REQUEST, 128).
 -define(ICMPV6_ECHO_REPLY, 129).
 
+-define(ICMPV6_NDP_RS, 133).
+-define(ICMPV6_NDP_RA, 134).
+-define(ICMPV6_NDP_NS, 135).
+-define(ICMPV6_NDP_NA, 136).
+-define(ICMPV6_NDP_REDIRECT, 137).
+
+-define(NDP_OPT_SLL, 1).
+-define(NDP_OPT_TLL, 2).
+
 %%% Records --------------------------------------------------------------------
 
 -record(linux_cooked, {
@@ -217,6 +226,17 @@
 
 -record(icmpv6, {
           type = ?ICMPV6_ECHO_REQUEST, code = 0, checksum = 0
+         }).
+
+-record(ndp_ns, { %% neighbor solicitation
+          tgt_addr = <<0:128>>,
+          sll :: undefined | binary()
+         }).
+
+-record(ndp_na, { %% neighbor advertisement
+          src_addr = <<0:128>>,
+          r = 0, s = 0, o = 0,
+          tll :: undefined | binary()
          }).
 
 -record(sctp, {
