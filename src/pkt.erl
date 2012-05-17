@@ -432,14 +432,14 @@ arp(#arp{
 %% IPv4
 %%
 ipv4(
-  <<4:4, HL:4, ToS:8, Len:16,
+  <<4:4, HL:4, DSCP:6, ECN:2, Len:16,
     Id:16, 0:1, DF:1, MF:1, %% RFC791 states it's a MUST
     Off:13, TTL:8, P:8, Sum:16,
     SAddr:32/bits, DAddr:32/bits, Rest/binary>>
  ) when HL >= 5 ->
     {Opt, Payload} = options(HL, Rest),
     {#ipv4{
-        hl = HL, tos = ToS, len = Len,
+        hl = HL, dscp = DSCP, ecn = ECN, len = Len,
         id = Id, df = DF, mf = MF,
         off = Off, ttl = TTL, p = P, sum = Sum,
         saddr = SAddr,
@@ -447,13 +447,13 @@ ipv4(
         opt = Opt
        }, Payload};
 ipv4(#ipv4{
-        hl = HL, tos = ToS, len = Len,
+        hl = HL, dscp = DSCP, ecn = ECN, len = Len,
         id = Id, df = DF, mf = MF,
         off = Off, ttl = TTL, p = P, sum = Sum,
         saddr = SAddr, daddr = DAddr,
         opt = Opt
        }) ->
-    <<4:4, HL:4, ToS:8, Len:16,
+    <<4:4, HL:4, DSCP:6, ECN:2, Len:16,
       Id:16, 0:1, DF:1, MF:1, %% RFC791 states it's a MUST
       Off:13, TTL:8, P:8, Sum:16,
       SAddr:32/bits, DAddr:32/bits, Opt/binary>>.
