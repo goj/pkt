@@ -109,7 +109,8 @@ encapsulate([#sctp{} = SCTP | Packet], Binary) ->
     SCTPBinary = sctp(SCTP),
     encapsulate(sctp, Packet, << SCTPBinary/binary, Binary/binary >>);
 encapsulate([#icmp{} = ICMP | Packet], Binary) ->
-    Checksum = makesum(<<(icmp(ICMP))/binary, Binary/binary>>),
+    ICMPNoCsumBinary = icmp(ICMP#icmp{checksum = 0}),
+    Checksum = makesum(<<ICMPNoCsumBinary/binary, Binary/binary>>),
     ICMPBinary = icmp(ICMP#icmp{checksum = Checksum}),
     encapsulate(icmp, Packet, << ICMPBinary/binary, Binary/binary >>);
 encapsulate([#ndp_ns{} = NDP | Packet], Binary) ->
