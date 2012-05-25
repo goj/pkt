@@ -252,6 +252,7 @@ family(_) -> unsupported.
 
 proto(?IPPROTO_IP) -> ip;
 proto(?IPPROTO_ICMP) -> icmp;
+proto(?IPPROTO_ICMPV6) -> icmpv6;
 proto(?IPPROTO_TCP) -> tcp;
 proto(?IPPROTO_UDP) -> udp;
 proto(?IPPROTO_IPV6) -> ipv6;
@@ -809,7 +810,7 @@ checksum(#ipv6{saddr = SAddr,
          #icmpv6{} = Hdr,
          Payload) ->
     ICMP = icmpv6(Hdr#icmpv6{checksum = 0}),
-    Len = bit_size(ICMP) + bit_size(Payload),
+    Len = size(ICMP) + size(Payload),
     checksum(<<SAddr:128/bits,
                DAddr:128/bits,
                Len:32,
