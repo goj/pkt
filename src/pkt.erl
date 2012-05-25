@@ -52,6 +52,7 @@
          icmpv6/1,
          ipv4/1,
          ipv6/1,
+         ipv6_header/2,
          proto/1,
          tcp/1,
          udp/1,
@@ -98,10 +99,12 @@ encapsulate([], Binary) ->
     Binary;
 encapsulate([Payload | Packet], <<>>) when is_binary(Payload) ->
     encapsulate(Packet, << Payload/binary >>);
-encapsulate([#tcp{} = TCP | [IP | _] = Packet], Binary) ->
+encapsulate([#tcp{} = TCP | Packet], Binary) ->
+    {ok, IP} = find_ip(Packet),
     TCPBinary = tcp(TCP#tcp{sum = makesum([IP, TCP, Binary])}),
     encapsulate(tcp, Packet, << TCPBinary/binary, Binary/binary >>);
-encapsulate([#udp{} = UDP0 | [IP | _] = Packet], Binary) ->
+encapsulate([#udp{} = UDP0 | IP = Packet], Binary) ->
+    {ok, IP} = find_ip(Packet),
     UDP = UDP0#udp{ulen = 8 + byte_size(Binary)},
     UDPBinary = udp(UDP#udp{sum = makesum([IP, UDP, Binary])}),
     encapsulate(udp, Packet, << UDPBinary/binary, Binary/binary >>);
@@ -117,7 +120,8 @@ encapsulate([#ndp_ns{} = NDP | Packet], Binary) ->
     encapsulate(ndp_ns, Packet, << (ndp_ns(NDP))/binary, Binary/binary >>);
 encapsulate([#ndp_na{} = NDP | Packet], Binary) ->
     encapsulate(ndp_na, Packet, << (ndp_na(NDP))/binary, Binary/binary >>);
-encapsulate([#icmpv6{} = ICMP | [IP|_] = Packet], Binary) ->
+encapsulate([#icmpv6{} = ICMP | Packet], Binary) ->
+    {ok, IP} = find_ip(Packet),
     ICMPBinary = icmpv6(ICMP#icmpv6{checksum = makesum([IP, ICMP, Binary])}),
     encapsulate(icmpv6, Packet, << ICMPBinary/binary, Binary/binary >>);
 encapsulate([#arp{} = ARP | Packet], Binary) ->
@@ -136,6 +140,10 @@ encapsulate(ICMPPayloadType, [#icmpv6{} = ICMP | Packet], Binary) ->
 encapsulate(Proto, [#ipv4{} = IPv4 | Packet], Binary) ->
     IPv4Binary = ipv4(fill_ipv4_hdr(IPv4, Proto, byte_size(Binary))),
     encapsulate(ipv4, Packet, << IPv4Binary/binary, Binary/binary >>);
+encapsulate(Proto, [#ipv6_header{} = IPv6Header | Packet], Binary) ->
+    Type = IPv6Header#ipv6_header.type,
+    HeaderBinary = ipv6_header(Proto, IPv6Header),
+    encapsulate(Type, Packet, << HeaderBinary/binary, Binary/binary >>);
 encapsulate(Proto, [#ipv6{} = IPv6 | Packet], Binary) ->
     IPv6Binary = ipv6(fill_ipv6_hdr(IPv6, Proto, byte_size(Binary))),
     encapsulate(ipv6, Packet, << IPv6Binary/binary, Binary/binary >>);
@@ -195,7 +203,17 @@ decapsulate({ipv4, Data}, Packet) when byte_size(Data) >= ?IPV4HDRLEN ->
     decapsulate({proto(Hdr#ipv4.p), Payload}, [Hdr|Packet]);
 decapsulate({ipv6, Data}, Packet) when byte_size(Data) >= ?IPV6HDRLEN ->
     {Hdr, Payload} = ipv6(Data),
-    decapsulate({proto(Hdr#ipv6.next), Payload}, [Hdr|Packet]);
+    decapsulate({ipv6_proto(Hdr#ipv6.next), Payload}, [Hdr|Packet]);
+
+%% TODO: introduce separate headers for various IPv6 options, parse separately
+decapsulate({IPv6Header, Data}, Packet) when IPv6Header =:= ipv6_hdr_hop_by_hop;
+                                             IPv6Header =:= ipv6_hdr_routing;
+                                             IPv6Header =:= ipv6_hdr_fragments;
+                                             IPv6Header =:= ipv6_hdr_dest_opts;
+                                             IPv6Header =:= ipv6_hdr_no_next ->
+    {Hdr, Payload} = ipv6_header(IPv6Header, Data),
+    decapsulate({ipv6_proto(Hdr#ipv6_header.next), Payload}, [Hdr|Packet]);
+
 %% GRE
 decapsulate({gre, Data}, Packet) when byte_size(Data) >= ?GREHDRLEN ->
     {Hdr, Payload} = gre(Data),
@@ -215,7 +233,7 @@ decapsulate({icmp, Data}, Packet) when byte_size(Data) >= ?ICMPHDRLEN ->
     decapsulate(stop, [Payload, Hdr|Packet]);
 decapsulate({icmpv6, Data}, Packet) when byte_size(Data) >= ?ICMPV6HDRLEN ->
     {Hdr, Payload} = icmpv6(Data),
-    decapsulate(icmpv6_payload_type(Hdr#icmpv6.type), [Payload, Hdr|Packet]);
+    decapsulate({icmpv6_payload_type(Hdr#icmpv6.type), Payload}, [Hdr|Packet]);
 
 decapsulate({ndp_ns, Data}, Packet) ->
     decapsulate(stop, [ndp_ns(Data)|Packet]);
@@ -250,6 +268,13 @@ family(?PF_INET) -> ipv4;
 family(?PF_INET6) -> ipv6;
 family(_) -> unsupported.
 
+ipv6_proto(?IPV6_HDR_HOP_BY_HOP) -> ipv6_hdr_hop_by_hop;
+ipv6_proto(?IPV6_HDR_ROUTING) -> ipv6_hdr_routing;
+ipv6_proto(?IPV6_HDR_FRAGMENT) -> ipv6_hdr_fragments;
+ipv6_proto(?IPV6_HDR_DEST_OPTS) -> ipv6_hdr_dest_opts;
+ipv6_proto(?IPV6_HDR_NO_NEXT_HEADER) -> ipv6_hdr_no_next;
+ipv6_proto(Proto) -> proto(Proto).
+
 proto(?IPPROTO_IP) -> ip;
 proto(?IPPROTO_ICMP) -> icmp;
 proto(?IPPROTO_ICMPV6) -> icmpv6;
@@ -260,6 +285,13 @@ proto(?IPPROTO_SCTP) -> sctp;
 proto(?IPPROTO_GRE) -> gre;
 proto(?IPPROTO_RAW) -> raw;
 proto(_) -> unsupported.
+
+ipv6_proto_code(ipv6_hdr_hop_by_hop, _) -> ?IPV6_HDR_HOP_BY_HOP;
+ipv6_proto_code(ipv6_hdr_routing, _) -> ?IPV6_HDR_ROUTING;
+ipv6_proto_code(ipv6_hdr_fragments, _) -> ?IPV6_HDR_FRAGMENT;
+ipv6_proto_code(ipv6_hdr_dest_opts, _) -> ?IPV6_HDR_DEST_OPTS;
+ipv6_proto_code(ipv6_hdr_no_next, _) -> ?IPV6_HDR_NO_NEXT_HEADER;
+ipv6_proto_code(Proto, Old) -> proto_code(Proto, Old).
 
 proto_code(icmp, _) -> ?IPPROTO_ICMP;
 proto_code(icmpv6, _) -> ?IPPROTO_ICMPV6;
@@ -289,7 +321,7 @@ fill_ipv4_hdr(#ipv4{opt = Opt} = IPv4, Proto, DataLen) ->
 
 fill_ipv6_hdr(#ipv6{} = IPv6, Proto, Len) ->
     IPv6#ipv6{len = Len,
-              next = proto_code(Proto, IPv6#ipv6.next)}.
+              next = ipv6_proto_code(Proto, IPv6#ipv6.next)}.
 
 fix_icmpv6_type(#icmpv6{} = ICMP, ndp_ns) ->
     ICMP#icmpv6{type = ?ICMPV6_NDP_NS};
@@ -483,6 +515,22 @@ ipv6(#ipv6{
     <<6:4, Class:8, Flow:20,
       Len:16, Next:8, Hop:8,
       SAddr:128/bits, DAddr:128/bits>>.
+
+ipv6_header(Next, #ipv6_header{next = OldNext,
+                               content = Content}) ->
+    NextCode = ipv6_proto_code(Next, OldNext),
+    HdrLen = byte_size(Content) + 2, % +2 = + NextCode + ExtLen
+    HdrLen8 = (HdrLen + 7) div 8, % in 8-octet parts; +7 to round up
+    ExtLen = HdrLen8 - 1, %% not including the first 8 octets
+    <<NextCode:8,
+      ExtLen:8,
+      Content/binary>>;
+ipv6_header(HeaderType, <<Next:8, ExtLen:8, Tail/binary>>) ->
+    ContentLen = 8 * ExtLen + 8 - 2, %% -2 = - Next - ExtLen
+    <<Content:ContentLen/binary, Payload/binary>> = Tail,
+    {#ipv6_header{type = HeaderType,
+                  next = Next,
+                  content = Content}, Payload}.
 
 %%
 %% GRE
@@ -838,6 +886,10 @@ compl(N,S) -> compl(N+S).
 valid(16#FFFF) -> true;
 valid(_) -> false.
 
+find_ip([#ipv4{} = IP | _]) -> {ok, IP};
+find_ip([#ipv6{} = IP | _]) -> {ok, IP};
+find_ip([_ | Tail]) -> find_ip(Tail);
+find_ip([]) -> {error, no_ip}.
 
 %%
 %% Datalink types

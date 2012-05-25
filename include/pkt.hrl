@@ -87,6 +87,12 @@
 -define(IPPROTO_SCTP, 132).
 -define(IPPROTO_RAW, 255).
 
+-define(IPV6_HDR_HOP_BY_HOP, 0).
+-define(IPV6_HDR_ROUTING, 43).
+-define(IPV6_HDR_FRAGMENT, 44).
+-define(IPV6_HDR_DEST_OPTS, 60).
+-define(IPV6_HDR_NO_NEXT_HEADER, 59).
+
 -define(ICMP_ECHOREPLY, 0).
 -define(ICMP_DEST_UNREACH, 3).
 -define(    ICMP_UNREACH_NET, 0).           % bad net
@@ -198,6 +204,13 @@
           v = 6, class = 0, flow = 0,
           len = 40, next = ?IPPROTO_TCP, hop = 0,
           saddr, daddr
+         }).
+
+%% TODO: introduce separate headers for various IPv6 options
+-record(ipv6_header, {
+          type :: atom(),
+          next :: integer(),
+          content :: binary()
          }).
 
 -record(tcp, {
