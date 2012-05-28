@@ -756,7 +756,7 @@ icmpv6(#icmpv6{type = Type, code = Code, checksum = Checksum}) ->
 %% NDP
 %%
 
-ndp_ns(<<_:32, TGTAddr:128, Rest/binary>>) ->
+ndp_ns(<<_:32, TGTAddr:128/binary, Rest/binary>>) ->
     NDP = #ndp_ns{tgt_addr = TGTAddr},
     case lists:keyfind(?NDP_OPT_SLL, 1, parse_ndp_options(Rest)) of
         {?NDP_OPT_SLL, SLL} ->
@@ -767,7 +767,7 @@ ndp_ns(<<_:32, TGTAddr:128, Rest/binary>>) ->
 ndp_ns(#ndp_ns{tgt_addr = TGTAddr, sll = SLL}) ->
     <<0:32, TGTAddr/binary, (ndp_addr(?NDP_OPT_SLL, SLL))/binary>>.
 
-ndp_na(<<R:1, S:1, O:1, _:29, SRCAddr:128, Rest/binary>>) ->
+ndp_na(<<R:1, S:1, O:1, _:29, SRCAddr:128/binary, Rest/binary>>) ->
     NDP = #ndp_na{r = R, s = S, o = O, src_addr = SRCAddr},
     case lists:keyfind(?NDP_OPT_TLL, 1, parse_ndp_options(Rest)) of
         {?NDP_OPT_TLL, TLL} ->
