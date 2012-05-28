@@ -103,7 +103,7 @@ encapsulate([#tcp{} = TCP | Packet], Binary) ->
     {ok, IP} = find_ip(Packet),
     TCPBinary = tcp(TCP#tcp{sum = makesum([IP, TCP, Binary])}),
     encapsulate(tcp, Packet, << TCPBinary/binary, Binary/binary >>);
-encapsulate([#udp{} = UDP0 | IP = Packet], Binary) ->
+encapsulate([#udp{} = UDP0 | Packet], Binary) ->
     {ok, IP} = find_ip(Packet),
     UDP = UDP0#udp{ulen = 8 + byte_size(Binary)},
     UDPBinary = udp(UDP#udp{sum = makesum([IP, UDP, Binary])}),
