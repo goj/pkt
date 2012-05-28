@@ -780,8 +780,11 @@ ndp_na(#ndp_na{src_addr = SRCAddr, r = R, s = S, o = O, tll = TLL}) ->
 
 parse_ndp_options(<<>>) ->
     [];
+parse_ndp_options(<<_Type:8, 0:8, Rest/binary>>) ->
+    parse_ndp_options(Rest); % silently discard option of length 0
 parse_ndp_options(<<Type:8, Len:8, Rest/binary>>) ->
-    <<Data:Len/binary, Next/binary>> = Rest,
+    DataLen = 8 * Len - 2,
+    <<Data:DataLen/binary, Next/binary>> = Rest,
     [{Type, Data} | parse_ndp_options(Next)].
 
 ndp_addr(_, undefined) ->
